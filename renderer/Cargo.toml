@@ -1,0 +1,11 @@
+[package]
+name = "renderer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shared = {path = "../shared"}
+bytemuck = "1.23.1"
+image = "0.25.6"
+egui_wgpu_backend = "0.34.0"
+

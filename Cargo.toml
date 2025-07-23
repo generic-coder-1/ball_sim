@@ -1,0 +1,7 @@
+[workspace]
+resovler = "3"
+members = [
+  "app",
+  "renderer",
+  "shared"
+]

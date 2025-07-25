@@ -2,28 +2,28 @@ use std::sync::Arc;
 
 use bytemuck::bytes_of;
 use egui_wgpu_backend::{
-    wgpu::{self, core::binding_model::BindGroupEntry, BindingType, BufferUsages},
+    wgpu::{self, BindingType, BufferUsages},
     ScreenDescriptor,
 };
+use shared::winit::window::Window;
 use shared::{
     anyhow,
     egui::{self, Context},
-    egui_winit_platform::{self, Platform},
-    winit::{self, platform},
+    egui_winit_platform::Platform,
 };
 pub use wgpu::SurfaceError;
-use wgpu::{
-    util::{DeviceExt, RenderEncoder},
-    BindGroup, BindGroupLayoutEntry, ShaderStages,
-};
-use winit::window::Window;
+use wgpu::{util::DeviceExt, BindGroupLayoutEntry, ShaderStages};
 
-use crate::{chunk::ChunkRenderingData, texture};
+use crate::{
+    chunk::{AtlasInfo, Chunk, ChunkRenderingData},
+    texture::Texture,
+};
 
 #[repr(C)]
 #[derive(Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 pub struct CameraUniform {
     pub pos: [f32; 2],
+    pub _pad: u32,
     pub scale: f32,
 }
 
@@ -73,6 +73,8 @@ impl State {
             )
             .await?;
 
+        dbg!(device.limits());
+
         // surface
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -92,16 +94,11 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        //shaders
-        let background_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("background_shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/chunk.wgsl").into()),
-        });
-
         //camera
         let camera_uniform = CameraUniform {
             pos: [0.0; 2],
             scale: 1.0,
+            ..Default::default()
         };
         let camera_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform_buffer"),
@@ -113,7 +110,7 @@ impl State {
                 label: Some("camera_bind_group_layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
+                    visibility: ShaderStages::VERTEX_FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -140,6 +137,25 @@ impl State {
         });
         let egui_renderer = egui_wgpu_backend::RenderPass::new(&device, surface_format, 1);
 
+        let atlas_texture = Texture::from_bytes(
+            &device,
+            &queue,
+            include_bytes!("./textures/sim_tiles.png"),
+            "atlas_texture",
+        )?;
+
+        let chunk_rendering_data = ChunkRenderingData::new(
+            &device,
+            &config,
+            &camera_bind_group_layout,
+            atlas_texture,
+            &AtlasInfo {
+                tiles_per_row: 3,
+                tiles_size: [16.0; 2],
+                ..Default::default()
+            },
+        );
+
         Ok(Self {
             surface,
             device,
@@ -151,6 +167,7 @@ impl State {
             egui_platform: platform,
             camera_buffer: camera_uniform_buffer,
             camera_bind_group,
+            chunk_rendering_data,
         })
     }
 
@@ -166,6 +183,10 @@ impl State {
     pub fn update_camera(&mut self, camera: CameraUniform) {
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytes_of(&camera));
+    }
+
+    pub fn update_chunks(&mut self, chunks: Vec<&Chunk>){
+        self.chunk_rendering_data.update_chunk_buffer(chunks, &self.queue, &self.device);
     }
 
     pub fn render(&mut self, ui_code: impl FnOnce(&Context)) -> Result<(), wgpu::SurfaceError> {
@@ -221,11 +242,8 @@ impl State {
                 timestamp_writes: None,
             });
 
-            render_pass.set_pipeline(&self.background_pipeline);
-            render_pass.set_bind_group(0, &self.screen_size_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.camera_bind_group, &[]);
-            render_pass.draw(0..3, 0..1);
+            self.chunk_rendering_data
+                .render(&mut render_pass, &self.camera_bind_group);
 
             render_pass.forget_lifetime();
         }

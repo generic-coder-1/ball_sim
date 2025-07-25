@@ -22,3 +22,9 @@ impl Vertex {
         }
     }
 }
+
+impl From<[f32; 2]> for Vertex{
+    fn from(value: [f32; 2]) -> Self {
+        Self { position: value }
+    }
+}

@@ -1,8 +1,11 @@
+use std::env;
+
 use app::App;
 use shared::{anyhow, env_logger, winit::event_loop::EventLoop};
 
 mod app;
 fn main() {
+    env::set_var("RUST_BACKTRACE", "1");
     run().unwrap()
 }
 

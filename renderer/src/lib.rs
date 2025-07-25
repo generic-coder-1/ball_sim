@@ -1,4 +1,4 @@
 pub mod state;
 mod texture;
-mod chunk;
+pub mod chunk;
 mod vertex;

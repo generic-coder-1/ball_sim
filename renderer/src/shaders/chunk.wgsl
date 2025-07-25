@@ -2,7 +2,7 @@ const CHUNK_SIZE: u32 = 32;
 
 struct ChunkInstance {
     position: vec2<i32>,
-    tileIndices: array<u32, CHUNK_SIZE * CHUNK_SIZE>,
+    tileIndices: array<u32, CHUNK_SIZE * CHUNK_SIZE / 4>, //we divide by 4 because we only need one byte to index into the tile atlas
 };
 
 struct VertexInput {
@@ -11,31 +11,33 @@ struct VertexInput {
 };
 
 struct VertexOutput {
-  @builtin(position) clip_position: vec4<f32>,
+  @builtin(position) position: vec4<f32>,
   @location(0) uv: vec2<f32>,
   @location(1) index: u32,
 };
 
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput{
-  let chunk = chunkInstances[input.instanceIndex];
+  let chunk = chunkInstances[input.index];
   
-  let world_pos = input.position + vec2<f32>(chunk.position * CHUNK_SIZE);
+  let world_pos = input.position + vec2<f32>(chunk.position * i32(CHUNK_SIZE));
 
   var out: VertexOutput;
   out.position = vec4<f32>((world_pos - camera.position) * camera.scale, 0.0, 1.0);
-  out.uv = input.vertexPos * 0.5 + vec2<f32>(0.5); // map [-0.5,0.5] to [0,1]
-  out.instanceIndex = input.instanceIndex;
+  out.uv = input.position; 
+  out.index = input.index;
   return out;
 }
 
 struct AtlasInfo {
   tilesPerRow: u32,
+  _pad: u32,
   tileSize: vec2<f32>,  // e.g., vec2(8.0) for 8x8 tiles
 };
 
 struct Camera{
   position: vec2<f32>,
+  _pad: u32,
   scale:f32,
 }
 
@@ -45,7 +47,7 @@ struct Camera{
 @group(1) @binding(1) var atlasSampler: sampler;
 @group(1) @binding(2) var<uniform> atlasInfo: AtlasInfo;
 
-@group(2) @binding(0) var camera: Camera;
+@group(2) @binding(0) var<uniform> camera: Camera;
 
 @fragment
 fn fs_main(
@@ -57,10 +59,11 @@ fn fs_main(
   // Determine which tile in chunk UV hits
   let tileUV = uv * vec2<f32>(f32(CHUNK_SIZE));
   let tileCoord = vec2<u32>(tileUV);
-  let tileIndexInChunk = tileCoord.y * CHUNK_WIDTH + tileCoord.x;
+  let tileIndexInChunk = tileCoord.y * CHUNK_SIZE + tileCoord.x;
 
   // Lookup tile index from chunk
-  let tileIndex = chunk.tileIndices[tileIndexInChunk];
+  var tileIndex = chunk.tileIndices[tileIndexInChunk/4u];
+  tileIndex = (tileIndex >> (tileIndexInChunk%4u * 8u)) & 0xFFu; 
 
   // Compute atlas UV offset
   let tileX = f32(tileIndex % atlasInfo.tilesPerRow);

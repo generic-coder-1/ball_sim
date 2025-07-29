@@ -1,10 +1,11 @@
-use std::{iter::repeat, num::NonZero};
+use core::panic;
 
 use bytemuck::{bytes_of, cast_slice};
 use egui_wgpu_backend::wgpu::{
-    self, util::DeviceExt, BindGroup, BindGroupEntry, BindGroupLayoutEntry, BindingResource,
-    BindingType, BufferUsages, ColorWrites, PipelineCompilationOptions, PrimitiveState, RenderPass,
-    RenderPipeline, ShaderStages, SurfaceConfiguration,
+    self, core::device::queue, util::DeviceExt, BindGroup, BindGroupEntry, BindGroupLayoutEntry,
+    BindingResource, BindingType, BufferUsages, ColorWrites, PipelineCompilationOptions,
+    PrimitiveState, RenderPass, RenderPipeline, ShaderStages, SurfaceConfiguration,
+    TextureDescriptor, TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 
 use crate::{texture::Texture, vertex::Vertex};
@@ -14,8 +15,8 @@ pub struct ChunkRenderingData {
 
     //group 0
     instance_array_buffer: wgpu::Buffer,
+    instance_data: wgpu::Texture,
     instance_array_size: u32,
-    instance_array_size_max: u32,
     instance_array_bind_group_layout: wgpu::BindGroupLayout,
     instance_array_bind_group: wgpu::BindGroup,
 
@@ -30,18 +31,25 @@ pub struct ChunkRenderingData {
 }
 
 const CHUNK_SIZE: usize = 32;
+const MAX_CHUNKS: usize = 256;
 
 #[repr(C, align(4))]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
-pub struct Chunk {
+#[derive(Default)]
+pub struct ChunkPosition {
     pub position: [i32; 2],
+}
+
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Chunk {
     pub data: [u8; CHUNK_SIZE * CHUNK_SIZE],
 }
 
 impl Default for Chunk {
     fn default() -> Self {
         Self {
-            position: Default::default(),
             data: [0; CHUNK_SIZE * CHUNK_SIZE],
         }
     }
@@ -58,21 +66,41 @@ pub struct AtlasInfo {
 impl ChunkRenderingData {
     pub fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         surface_config: &SurfaceConfiguration,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
         atlas_texture: Texture,
         atlas_info: &AtlasInfo,
     ) -> Self {
-        //dummy data because we can't create a zero sized buffer :(
-        let instance_array: Vec<Chunk> = vec![
+        let instance_array: Vec<ChunkPosition> =
+            vec![ChunkPosition { position: [0; 2] }; MAX_CHUNKS];
+        let chunks = vec![
             Chunk {
-                position: [0; 2],
                 data: [0; CHUNK_SIZE * CHUNK_SIZE],
             };
-            1
+            MAX_CHUNKS
         ];
+        let instance_data = device.create_texture_with_data(
+            queue,
+            &TextureDescriptor {
+                label: Some("Chunk data"),
+                size: wgpu::Extent3d {
+                    width: CHUNK_SIZE as u32,
+                    height: CHUNK_SIZE as u32,
+                    depth_or_array_layers: MAX_CHUNKS as u32,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R8Uint,
+                usage: TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[TextureFormat::R8Uint],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &bytemuck::cast_vec(chunks),
+        );
+
         let instance_array_size = 0;
-        let instance_array_size_max = instance_array.len() as u32;
         let instance_array_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("instance_array_buffer"),
             contents: cast_slice(&instance_array),
@@ -81,24 +109,54 @@ impl ChunkRenderingData {
         let instance_array_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("instance_array_data_bind_group_layout"),
-                entries: &[BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX_FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::VERTEX_FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Uint,
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                ],
             });
         let instance_array_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("instance_array_bind_group"),
             layout: &instance_array_bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: instance_array_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: instance_array_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureView(&instance_data.create_view(
+                        &TextureViewDescriptor {
+                            label: Some("chunk data view"),
+                            format: Some(TextureFormat::R8Uint),
+                            dimension: Some(wgpu::TextureViewDimension::D2Array),
+                            aspect: wgpu::TextureAspect::All,
+                            base_mip_level: 0,
+                            mip_level_count: None,
+                            base_array_layer: 0,
+                            array_layer_count: None,
+                            usage: None,
+                        },
+                    )),
+                },
+            ],
         });
 
         let atlas_info_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -123,12 +181,6 @@ impl ChunkRenderingData {
                     BindGroupLayoutEntry {
                         binding: 1,
                         visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -148,10 +200,6 @@ impl ChunkRenderingData {
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::Sampler(&atlas_texture.sampler),
-                },
-                BindGroupEntry {
-                    binding: 2,
                     resource: atlas_info_buffer.as_entire_binding(),
                 },
             ],
@@ -222,14 +270,15 @@ impl ChunkRenderingData {
 
         Self {
             instance_array_buffer,
+            instance_data,
             instance_array_size,
-            instance_array_size_max,
             instance_array_bind_group_layout,
             instance_array_bind_group,
 
             atlas_texture: atlas_texture.texture,
             atlas_info_buffer,
             atlas_bind_group,
+
             pipeline,
 
             vertex_buffer,
@@ -248,51 +297,34 @@ impl ChunkRenderingData {
         }
     }
 
-    pub fn update_chunk_buffer(
+    pub fn update_chunks(
         &mut self,
-        chunks: Vec<&Chunk>,
         queue: &wgpu::Queue,
-        device: &wgpu::Device,
+        pos: Vec<ChunkPosition>,
+        data: Vec<Chunk>,
     ) {
-        if !chunks.is_empty() {
-            let mut data = chunks.iter().map(|c| bytes_of(*c)).fold(
-                Vec::with_capacity(size_of::<Chunk>() * chunks.len()),
-                |mut acc, val| {
-                    val.iter().for_each(|&v| {
-                        acc.push(v);
-                    });
-                    acc
-                },
-            );
-
-            if chunks.len() as u32 > self.instance_array_size_max {
-                while chunks.len() as u32 > self.instance_array_size_max {
-                    self.instance_array_size_max *= 2;
-                }
-                data.extend(std::iter::repeat_n(
-                    0,
-                    (self.instance_array_size_max as usize - chunks.len()) * size_of::<Chunk>(),
-                ));
-                self.instance_array_buffer.destroy();
-                self.instance_array_buffer =
-                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("instance_array_buffer"),
-                        contents: data.as_slice(),
-                        usage: BufferUsages::COPY_DST | BufferUsages::STORAGE,
-                    });
-                self.instance_array_bind_group =
-                    device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("instance_array_bind_group"),
-                        layout: &self.instance_array_bind_group_layout,
-                        entries: &[BindGroupEntry {
-                            binding: 0,
-                            resource: self.instance_array_buffer.as_entire_binding(),
-                        }],
-                    });
-            } else {
-                queue.write_buffer(&self.instance_array_buffer, 0, data.as_slice())
-            }
+        if pos.len() != data.len() {
+            panic!("sizes of data is incorrect");
         }
-        self.instance_array_size = chunks.len() as u32;
+        if data.len() > MAX_CHUNKS {
+            panic!("drawing too many chunks");
+        }
+        queue.write_buffer(&self.instance_array_buffer, 0, bytemuck::cast_slice(pos.as_slice()));
+        let ext = wgpu::Extent3d {
+            width: CHUNK_SIZE as u32,
+            height: CHUNK_SIZE as u32,
+            depth_or_array_layers: data.len() as u32,
+        };
+        self.instance_array_size = data.len() as u32;
+        queue.write_texture(
+            self.instance_data.as_image_copy(),
+            bytemuck::cast_slice(data.as_slice()),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(CHUNK_SIZE as u32),
+                rows_per_image: Some(CHUNK_SIZE as u32),
+            },
+            ext,
+        );
     }
 }

@@ -15,7 +15,7 @@ pub use wgpu::SurfaceError;
 use wgpu::{util::DeviceExt, BindGroupLayoutEntry, ShaderStages};
 
 use crate::{
-    chunk::{AtlasInfo, Chunk, ChunkRenderingData},
+    chunk::{AtlasInfo, Chunk, ChunkPosition, ChunkRenderingData},
     texture::Texture,
 };
 
@@ -161,6 +161,7 @@ impl State {
 
         let chunk_rendering_data = ChunkRenderingData::new(
             &device,
+            &queue,
             &config,
             &camera_bind_group_layout,
             atlas_texture,
@@ -200,9 +201,8 @@ impl State {
             .write_buffer(&self.camera_buffer, 0, bytes_of(&camera));
     }
 
-    pub fn update_chunks(&mut self, chunks: Vec<&Chunk>) {
-        self.chunk_rendering_data
-            .update_chunk_buffer(chunks, &self.queue, &self.device);
+    pub fn update_chunks(&mut self, pos: Vec<ChunkPosition>, chunks: Vec<Chunk>) {
+        self.chunk_rendering_data.update_chunks(&self.queue, pos, chunks);
     }
 
     pub fn render(&mut self, ui_code: impl FnOnce(&Context)) -> Result<(), wgpu::SurfaceError> {

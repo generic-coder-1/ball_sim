@@ -1,7 +1,7 @@
 use std::{array::from_fn, collections::HashSet, sync::Arc, time::Instant};
 
 use renderer::{
-    chunk::Chunk,
+    chunk::{Chunk, ChunkPosition},
     state::{CameraUniform, State, SurfaceError},
 };
 use shared::{
@@ -94,10 +94,12 @@ impl ApplicationHandler<State> for App {
         self.state = Some(pollster::block_on(State::new(window)).unwrap());
 
         //default chunk
-        self.state.as_mut().unwrap().update_chunks(vec![&Chunk {
-            position: [0; 2],
-            data: from_fn(|_| Tile::Flat.into()),
-        }]);
+        self.state.as_mut().unwrap().update_chunks(
+            vec![ChunkPosition { position: [0; 2] }],
+            vec![Chunk {
+                data: from_fn(|_| Into::<u8>::into(Tile::Flat)),
+            }],
+        );
 
         //updating camera
         let size = self.state.as_ref().unwrap().window.inner_size();

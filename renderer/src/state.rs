@@ -43,7 +43,7 @@ impl CameraUniform {
     }
 }
 
-pub struct State {
+pub struct RenderState {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -58,7 +58,7 @@ pub struct State {
     chunk_rendering_data: ChunkRenderingData,
 }
 
-impl State {
+impl RenderState {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let size = window.inner_size();
 

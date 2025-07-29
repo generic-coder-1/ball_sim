@@ -4,6 +4,9 @@ use app::App;
 use shared::{anyhow, env_logger, winit::event_loop::EventLoop};
 
 mod app;
+mod tiles;
+pub const LINE_HEIGHT: f32 = 1.;
+
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     run().unwrap()

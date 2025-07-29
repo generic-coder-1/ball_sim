@@ -7,3 +7,13 @@ edition = "2021"
 pollster = "0.4.0"
 renderer = {path = "../renderer"}
 shared = {path = "../shared"}
+
+[dependencies.profiling]
+version = "1.0"
+features = ["profile-with-tracy"]
+
+[features]
+default = []
+tracy = ["profiling/profile-with-tracy"]
+
+

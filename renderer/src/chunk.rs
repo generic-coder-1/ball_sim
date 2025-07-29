@@ -31,7 +31,7 @@ pub struct ChunkRenderingData {
 
 const CHUNK_SIZE: usize = 32;
 
-#[repr(C)]
+#[repr(C, align(4))]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 pub struct Chunk {
     pub position: [i32; 2],
@@ -52,7 +52,7 @@ impl Default for Chunk {
 pub struct AtlasInfo {
     pub tiles_per_row: u32,
     pub _pad: u32,
-    pub tiles_size: [f32; 2],
+    pub tiles_size: [u32; 2],
 }
 
 impl ChunkRenderingData {
@@ -69,7 +69,7 @@ impl ChunkRenderingData {
                 position: [0; 2],
                 data: [0; CHUNK_SIZE * CHUNK_SIZE],
             };
-            256
+            1
         ];
         let instance_array_size = 0;
         let instance_array_size_max = instance_array.len() as u32;
@@ -194,7 +194,7 @@ impl ChunkRenderingData {
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None,
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
@@ -214,8 +214,8 @@ impl ChunkRenderingData {
             contents: cast_slice::<Vertex, u8>(&[
                 [0.0, 0.0].into(),
                 [1.0, 0.0].into(),
-                [1.0, 1.0].into(),
                 [0.0, 1.0].into(),
+                [1.0, 1.0].into(),
             ]),
             usage: BufferUsages::VERTEX,
         });
@@ -290,18 +290,8 @@ impl ChunkRenderingData {
                         }],
                     });
             } else {
-                let mut view = queue
-                    .write_buffer_with(
-                        &self.instance_array_buffer,
-                        0,
-                        NonZero::new(data.len() as u64)
-                            .expect("we literally checked that chunks was not empty earlier"),
-                    )
-                    .expect("buffer can be written to");
-
-                view.copy_from_slice(data.as_slice());
+                queue.write_buffer(&self.instance_array_buffer, 0, data.as_slice())
             }
-            queue.submit([]);
         }
         self.instance_array_size = chunks.len() as u32;
     }

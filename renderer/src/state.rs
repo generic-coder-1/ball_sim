@@ -23,8 +23,24 @@ use crate::{
 #[derive(Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 pub struct CameraUniform {
     pub pos: [f32; 2],
-    pub _pad: u32,
-    pub scale: f32,
+    pub screensize: [f32; 2],
+    pub width: f32,
+    pub min_ratio: f32, // horizontal / vertical
+}
+
+impl CameraUniform {
+    pub fn world_viewport_size(&self) -> [f32; 2] {
+        let scale = self.screensize[0].min(self.screensize[1] * self.min_ratio) / self.width;
+        [self.screensize[0] / scale, self.screensize[1] / scale]
+    }
+
+    pub fn camera_to_world(&self, pos: [f32; 2]) -> [f32; 2] {
+        let world_size = self.world_viewport_size();
+        [
+            (pos[0]/self.screensize[0]-0.5)*world_size[0]+self.pos[0],
+            (0.5-pos[1]/self.screensize[1])*world_size[1]+self.pos[1],
+        ]
+    }
 }
 
 pub struct State {
@@ -73,8 +89,6 @@ impl State {
             )
             .await?;
 
-        dbg!(device.limits());
-
         // surface
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -97,8 +111,9 @@ impl State {
         //camera
         let camera_uniform = CameraUniform {
             pos: [0.0; 2],
-            scale: 1.0,
-            ..Default::default()
+            min_ratio: 1.25,
+            width: 4.0,
+            screensize: window.inner_size().into(),   
         };
         let camera_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform_buffer"),
@@ -151,7 +166,7 @@ impl State {
             atlas_texture,
             &AtlasInfo {
                 tiles_per_row: 3,
-                tiles_size: [16.0; 2],
+                tiles_size: [16; 2],
                 ..Default::default()
             },
         );
@@ -185,8 +200,9 @@ impl State {
             .write_buffer(&self.camera_buffer, 0, bytes_of(&camera));
     }
 
-    pub fn update_chunks(&mut self, chunks: Vec<&Chunk>){
-        self.chunk_rendering_data.update_chunk_buffer(chunks, &self.queue, &self.device);
+    pub fn update_chunks(&mut self, chunks: Vec<&Chunk>) {
+        self.chunk_rendering_data
+            .update_chunk_buffer(chunks, &self.queue, &self.device);
     }
 
     pub fn render(&mut self, ui_code: impl FnOnce(&Context)) -> Result<(), wgpu::SurfaceError> {

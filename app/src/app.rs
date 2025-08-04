@@ -141,6 +141,13 @@ impl App {
     pub fn scroll_level_mut(&mut self) -> &mut f32 {
         &mut self.scroll_level
     }
+
+    pub fn set_chunk_to_draw(&mut self, chunks: Vec<(ChunkPosition, Chunk)>){
+        if let Some(ref mut render_state) = &mut self.render_state{
+            let (pos, data) = chunks.into_iter().unzip();
+            render_state.update_chunks(pos, data);
+        }
+    }
 }
 
 impl ApplicationHandler<RenderState> for App {

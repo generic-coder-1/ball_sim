@@ -2,7 +2,7 @@ use core::panic;
 
 use bytemuck::{bytes_of, cast_slice};
 use egui_wgpu_backend::wgpu::{
-    self, core::device::queue, util::DeviceExt, BindGroup, BindGroupEntry, BindGroupLayoutEntry,
+    self, util::DeviceExt, BindGroup, BindGroupEntry, BindGroupLayoutEntry,
     BindingResource, BindingType, BufferUsages, ColorWrites, PipelineCompilationOptions,
     PrimitiveState, RenderPass, RenderPipeline, ShaderStages, SurfaceConfiguration,
     TextureDescriptor, TextureFormat, TextureUsages, TextureViewDescriptor,
@@ -17,12 +17,9 @@ pub struct ChunkRenderingData {
     instance_array_buffer: wgpu::Buffer,
     instance_data: wgpu::Texture,
     instance_array_size: u32,
-    instance_array_bind_group_layout: wgpu::BindGroupLayout,
     instance_array_bind_group: wgpu::BindGroup,
 
     //group 1
-    atlas_texture: wgpu::Texture,
-    atlas_info_buffer: wgpu::Buffer,
     atlas_bind_group: wgpu::BindGroup,
     //group 2 will be provided for us
 
@@ -30,11 +27,11 @@ pub struct ChunkRenderingData {
     vertex_buffer: wgpu::Buffer,
 }
 
-const CHUNK_SIZE: usize = 32;
+pub const CHUNK_SIZE: usize = 32;
 const MAX_CHUNKS: usize = 256;
 
 #[repr(C, align(4))]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug, PartialEq, Eq, Hash)]
 #[derive(Default)]
 pub struct ChunkPosition {
     pub position: [i32; 2],
@@ -52,6 +49,12 @@ impl Default for Chunk {
         Self {
             data: [0; CHUNK_SIZE * CHUNK_SIZE],
         }
+    }
+}
+
+impl Chunk{
+    pub fn set_tile(&mut self, pos: [u32; 2], tile: u8){
+        self.data[(pos[0] + (CHUNK_SIZE as u32 - pos[1] - 1)*CHUNK_SIZE as u32) as usize] = tile; 
     }
 }
 
@@ -272,11 +275,8 @@ impl ChunkRenderingData {
             instance_array_buffer,
             instance_data,
             instance_array_size,
-            instance_array_bind_group_layout,
             instance_array_bind_group,
 
-            atlas_texture: atlas_texture.texture,
-            atlas_info_buffer,
             atlas_bind_group,
 
             pipeline,

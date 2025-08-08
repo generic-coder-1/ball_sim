@@ -83,6 +83,11 @@ impl App {
                 1.0 / self.last_render_time.elapsed().as_secs_f32()
             ));
         });
+        let mut state = self.state.take();
+        if let Some(ref mut state) = &mut state {
+            state.ui(self, ctx);
+        }
+        self.state = state;
     }
 
     #[profiling::function]
@@ -126,7 +131,7 @@ impl App {
         &self.camera
     }
 
-    pub fn camera_mut(&mut self) -> &mut CameraUniform{
+    pub fn camera_mut(&mut self) -> &mut CameraUniform {
         &mut self.camera
     }
 
@@ -142,8 +147,8 @@ impl App {
         &mut self.scroll_level
     }
 
-    pub fn set_chunk_to_draw(&mut self, chunks: Vec<(ChunkPosition, Chunk)>){
-        if let Some(ref mut render_state) = &mut self.render_state{
+    pub fn set_chunk_to_draw(&mut self, chunks: Vec<(ChunkPosition, Chunk)>) {
+        if let Some(ref mut render_state) = &mut self.render_state {
             let (pos, data) = chunks.into_iter().unzip();
             render_state.update_chunks(pos, data);
         }
@@ -162,7 +167,7 @@ impl ApplicationHandler<RenderState> for App {
         self.render_state.as_mut().unwrap().update_chunks(
             vec![ChunkPosition { position: [0; 2] }],
             vec![Chunk {
-                data: from_fn(|_| Into::<u8>::into(Tile::Flat)),
+                data: from_fn(|_| Into::<u8>::into(Tile::Down)),
             }],
         );
 
@@ -220,11 +225,6 @@ impl ApplicationHandler<RenderState> for App {
 
                 match state.render(|ctx| {
                     self.ui(ctx);
-                    let mut state = self.state.take();
-                    if let Some(ref mut state) = &mut state {
-                        state.ui(self, ctx);
-                    }
-                    self.state = state;
                 }) {
                     Ok(_) => {
                         self.last_render_time = Instant::now();

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use bytemuck::bytes_of;
 use egui_wgpu_backend::{
@@ -53,6 +53,7 @@ pub struct RenderState {
     camera_bind_group: wgpu::BindGroup,
     egui_renderer: egui_wgpu_backend::RenderPass,
     pub egui_platform: Platform,
+    start_time: Instant,
     pub window: Arc<Window>,
 
     chunk_rendering_data: ChunkRenderingData,
@@ -184,6 +185,7 @@ impl RenderState {
             camera_buffer: camera_uniform_buffer,
             camera_bind_group,
             chunk_rendering_data,
+            start_time: Instant::now(),
         })
     }
 
@@ -207,6 +209,7 @@ impl RenderState {
 
     pub fn render(&mut self, ui_code: impl FnOnce(&Context)) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
+        self.egui_platform.update_time(self.start_time.elapsed().as_secs_f64());
 
         if !self.is_surface_configured {
             return Ok(());
@@ -220,6 +223,7 @@ impl RenderState {
         //egui stuff
         self.egui_platform.begin_pass();
         ui_code(&self.egui_platform.context());
+
         let full_output = self.egui_platform.end_pass(Some(&self.window));
         let paint_jobs = self
             .egui_platform

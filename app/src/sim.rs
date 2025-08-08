@@ -14,6 +14,7 @@ use crate::{
 
 pub struct Simulation {
     chunks: HashMap<ChunkPosition, Chunk>,
+    current_tool: Tile,
     last_mouse_pos: [f32; 2],
 }
 
@@ -22,11 +23,12 @@ impl Simulation {
         let mut s = Self {
             chunks: HashMap::new(),
             last_mouse_pos: mouse_pos,
+            current_tool: Tile::Block,
         };
         s.chunks.insert(
             ChunkPosition { position: [0; 2] },
             Chunk {
-                data: from_fn(|_| Into::<u8>::into(Tile::Flat)),
+                data: from_fn(|_| Into::<u8>::into(Tile::Down)),
             },
         );
         s
@@ -84,7 +86,7 @@ impl Simulation {
                 ],
             })
             .or_insert(Chunk {
-                data: from_fn(|_| u8::from(Tile::Empty)),
+                data: from_fn(|_| u8::from(Tile::Down)),
             })
             .set_tile(
                 [
@@ -95,13 +97,36 @@ impl Simulation {
             );
     }
 
+    fn get_tile(&self, pos: [i32; 2]) -> Tile {
+        self.chunks
+            .get(&ChunkPosition {
+                position: [
+                    pos[0].div_euclid(CHUNK_SIZE as i32),
+                    pos[1].div_euclid(CHUNK_SIZE as i32),
+                ],
+            })
+            .and_then(|chunk| {
+                chunk
+                    .get_tile([
+                        pos[0].rem_euclid(CHUNK_SIZE as i32) as u32,
+                        pos[1].rem_euclid(CHUNK_SIZE as i32) as u32,
+                    ])
+                    .try_into()
+                    .ok()
+            })
+            .unwrap_or(Tile::Down)
+    }
+
     fn handle_mouse(&mut self, app: &mut App) {
         if app.mouse_buttons().0 {
             if app.is_key_pressed(KeyCode::ShiftLeft) {
                 self.drag_camera(app);
             } else {
                 let pos = app.get_mouse_position_world();
-                self.set_tile([pos[0].floor() as i32, pos[1].floor() as i32], Tile::Block);
+                self.set_tile(
+                    [pos[0].floor() as i32, pos[1].floor() as i32],
+                    self.current_tool,
+                );
             }
         }
     }
@@ -117,5 +142,11 @@ impl State for Simulation {
         self.last_mouse_pos = app.get_mouse_position_world();
     }
 
-    fn ui(&mut self, app: &mut crate::app::App, ctx: &shared::egui::Context) {}
+    fn ui(&mut self, app: &mut crate::app::App, ctx: &shared::egui::Context) {
+        egui::Window::new("tile select").show(ctx, |ui| {
+            (0_u8..9_u8).filter_map(|val|val.try_into().ok()).for_each(|tile|{
+                ui.selectable_value(&mut self.current_tool, tile, format!("{tile:?}"));
+            });
+        });
+    }
 }

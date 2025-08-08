@@ -1,30 +1,28 @@
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tile {
-    Elevator,
-    Block,
-    Flat,
-    Right,
+    Up,
+    Down,
     Left,
-    Hold, //might replace later
-    Conditional,
+    Right,
+    Hold,
+    Block,
     Duplicate,
-    Spike,
-    Empty,
+    Filter,
+    Destroy,
 }
 
 impl From<Tile> for u8 {
     fn from(value: Tile) -> Self {
         match value {
-            Tile::Elevator => 0,
-            Tile::Block => 1,
-            Tile::Flat => 2,
+            Tile::Up => 0,
+            Tile::Down => 1,
+            Tile::Left => 2,
             Tile::Right => 3,
-            Tile::Left => 4,
-            Tile::Hold => 5,
-            Tile::Conditional => 6,
-            Tile::Duplicate => 7,
-            Tile::Spike => 8,
-            Tile::Empty => 9,
+            Tile::Hold => 4,
+            Tile::Block => 5,
+            Tile::Duplicate => 6,
+            Tile::Filter => 7,
+            Tile::Destroy => 8,
         }
     }
 }
@@ -34,16 +32,15 @@ impl TryFrom<u8> for Tile {
 
     fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
         Ok(match value {
-            0 => Tile::Elevator,
-            1 => Tile::Block,
-            2 => Tile::Flat,
-            3 => Tile::Right,
-            4 => Tile::Left,
-            5 => Tile::Hold,
-            6 => Tile::Conditional,
-            7 => Tile::Duplicate,
-            8 => Tile::Spike,
-            9 => Tile::Empty,
+            0 => Tile::Up,
+            1 => Self::Down,
+            2 => Self::Left,
+            3 => Self::Right,
+            4 => Self::Hold,
+            5 => Self::Block,
+            6 => Self::Duplicate,
+            7 => Self::Filter,
+            8 => Self::Destroy,
             _ => Err(())?,
         })
     }

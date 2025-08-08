@@ -2,10 +2,10 @@ use core::panic;
 
 use bytemuck::{bytes_of, cast_slice};
 use egui_wgpu_backend::wgpu::{
-    self, util::DeviceExt, BindGroup, BindGroupEntry, BindGroupLayoutEntry,
-    BindingResource, BindingType, BufferUsages, ColorWrites, PipelineCompilationOptions,
-    PrimitiveState, RenderPass, RenderPipeline, ShaderStages, SurfaceConfiguration,
-    TextureDescriptor, TextureFormat, TextureUsages, TextureViewDescriptor,
+    self, util::DeviceExt, BindGroup, BindGroupEntry, BindGroupLayoutEntry, BindingResource,
+    BindingType, BufferUsages, ColorWrites, PipelineCompilationOptions, PrimitiveState, RenderPass,
+    RenderPipeline, ShaderStages, SurfaceConfiguration, TextureDescriptor, TextureFormat,
+    TextureUsages, TextureViewDescriptor,
 };
 
 use crate::{texture::Texture, vertex::Vertex};
@@ -31,12 +31,10 @@ pub const CHUNK_SIZE: usize = 32;
 const MAX_CHUNKS: usize = 256;
 
 #[repr(C, align(4))]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug, PartialEq, Eq, Hash, Default)]
 pub struct ChunkPosition {
     pub position: [i32; 2],
 }
-
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -52,9 +50,13 @@ impl Default for Chunk {
     }
 }
 
-impl Chunk{
-    pub fn set_tile(&mut self, pos: [u32; 2], tile: u8){
-        self.data[(pos[0] + (CHUNK_SIZE as u32 - pos[1] - 1)*CHUNK_SIZE as u32) as usize] = tile; 
+impl Chunk {
+    pub fn set_tile(&mut self, pos: [u32; 2], tile: u8) {
+        self.data[(pos[0] + (CHUNK_SIZE as u32 - pos[1] - 1) * CHUNK_SIZE as u32) as usize] = tile;
+    }
+
+    pub fn get_tile(&self, pos: [u32; 2]) -> u8 {
+        self.data[(pos[0] + (CHUNK_SIZE as u32 - pos[1] - 1) * CHUNK_SIZE as u32) as usize]
     }
 }
 
@@ -309,7 +311,11 @@ impl ChunkRenderingData {
         if data.len() > MAX_CHUNKS {
             panic!("drawing too many chunks");
         }
-        queue.write_buffer(&self.instance_array_buffer, 0, bytemuck::cast_slice(pos.as_slice()));
+        queue.write_buffer(
+            &self.instance_array_buffer,
+            0,
+            bytemuck::cast_slice(pos.as_slice()),
+        );
         let ext = wgpu::Extent3d {
             width: CHUNK_SIZE as u32,
             height: CHUNK_SIZE as u32,

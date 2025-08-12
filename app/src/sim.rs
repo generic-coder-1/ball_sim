@@ -4,7 +4,7 @@ use std::{
     ops::{Range, RangeInclusive},
 };
 
-use renderer::chunk::{Chunk, ChunkPosition, CHUNK_SIZE};
+use renderer::{ball::BallPosition, chunk::{Chunk, ChunkPosition, CHUNK_SIZE}};
 use shared::{egui, winit::keyboard::KeyCode};
 
 use crate::{

@@ -15,6 +15,7 @@ pub use wgpu::SurfaceError;
 use wgpu::{util::DeviceExt, BindGroupLayoutEntry, ShaderStages};
 
 use crate::{
+    ball::{BallPosition, BallRenderingData},
     chunk::{AtlasInfo, Chunk, ChunkPosition, ChunkRenderingData},
     texture::Texture,
 };
@@ -37,8 +38,8 @@ impl CameraUniform {
     pub fn camera_to_world(&self, pos: [f32; 2]) -> [f32; 2] {
         let world_size = self.world_viewport_size();
         [
-            (pos[0]/self.screensize[0]-0.5)*world_size[0]+self.pos[0],
-            (0.5-pos[1]/self.screensize[1])*world_size[1]+self.pos[1],
+            (pos[0] / self.screensize[0] - 0.5) * world_size[0] + self.pos[0],
+            (0.5 - pos[1] / self.screensize[1]) * world_size[1] + self.pos[1],
         ]
     }
 }
@@ -57,6 +58,7 @@ pub struct RenderState {
     pub window: Arc<Window>,
 
     chunk_rendering_data: ChunkRenderingData,
+    ball_rendering_data: BallRenderingData,
 }
 
 impl RenderState {
@@ -114,7 +116,7 @@ impl RenderState {
             pos: [0.0; 2],
             min_ratio: 1.25,
             width: 4.0,
-            screensize: window.inner_size().into(),   
+            screensize: window.inner_size().into(),
         };
         let camera_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform_buffer"),
@@ -160,6 +162,13 @@ impl RenderState {
             "atlas_texture",
         )?;
 
+        let ball_texture = Texture::from_bytes(
+            &device,
+            &queue,
+            include_bytes!("./textures/balls.png"),
+            "ball_texture",
+        )?;
+
         let chunk_rendering_data = ChunkRenderingData::new(
             &device,
             &queue,
@@ -171,6 +180,14 @@ impl RenderState {
                 tiles_size: [16; 2],
                 ..Default::default()
             },
+        );
+
+        let ball_rendering_data = BallRenderingData::new(
+            &device,
+            &queue,
+            &camera_bind_group_layout,
+            ball_texture,
+            &config,
         );
 
         Ok(Self {
@@ -185,6 +202,7 @@ impl RenderState {
             camera_buffer: camera_uniform_buffer,
             camera_bind_group,
             chunk_rendering_data,
+            ball_rendering_data,
             start_time: Instant::now(),
         })
     }
@@ -204,12 +222,19 @@ impl RenderState {
     }
 
     pub fn update_chunks(&mut self, pos: Vec<ChunkPosition>, chunks: Vec<Chunk>) {
-        self.chunk_rendering_data.update_chunks(&self.queue, pos, chunks);
+        self.chunk_rendering_data
+            .update_chunks(&self.queue, pos, chunks);
+    }
+
+    pub fn update_balls(&mut self, pos: Vec<BallPosition>, balls: Vec<bool>) {
+        self.ball_rendering_data
+            .update_balls(&self.queue, pos, balls);
     }
 
     pub fn render(&mut self, ui_code: impl FnOnce(&Context)) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
-        self.egui_platform.update_time(self.start_time.elapsed().as_secs_f64());
+        self.egui_platform
+            .update_time(self.start_time.elapsed().as_secs_f64());
 
         if !self.is_surface_configured {
             return Ok(());
@@ -263,6 +288,8 @@ impl RenderState {
             });
 
             self.chunk_rendering_data
+                .render(&mut render_pass, &self.camera_bind_group);
+            self.ball_rendering_data
                 .render(&mut render_pass, &self.camera_bind_group);
 
             render_pass.forget_lifetime();

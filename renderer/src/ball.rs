@@ -214,13 +214,13 @@ impl BallRenderingData {
     }
 
     pub fn update_balls(&mut self, queue: &wgpu::Queue, pos: Vec<BallPosition>, data: Vec<bool>) {
-        println!("pls work len: {}", pos.len());
         if pos.len() != data.len() {
             panic!("sizes of data is incorrect");
         }
         if data.len() > MAX_BALLS as usize {
             panic!("drawing too many balls");
         }
+        self.instance_array_size = data.len() as u32;
         queue.write_buffer(
             &self.instance_position_buffer,
             0,

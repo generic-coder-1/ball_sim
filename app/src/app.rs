@@ -178,7 +178,19 @@ impl ApplicationHandler<RenderState> for App {
                 data: from_fn(|_| Into::<u8>::into(Tile::Down)),
             }],
         );
-        self.set_balls_to_draw((0..100).flat_map(|i| (0..100).map(move |j| (i, j))).map(|i| (BallPosition { position: [i.0, i.1] }, true)).collect());
+        self.set_balls_to_draw(
+            (0..100)
+                .flat_map(|i| (0..100).map(move |j| (i, j)))
+                .map(|i| {
+                    (
+                        BallPosition {
+                            position: [i.0, i.1],
+                        },
+                        true,
+                    )
+                })
+                .collect(),
+        );
 
         //updating camera
         let size = self.render_state.as_ref().unwrap().window.inner_size();
@@ -289,12 +301,22 @@ impl ApplicationHandler<RenderState> for App {
                 event:
                     KeyEvent {
                         physical_key: PhysicalKey::Code(code),
-                        state,
+                        state: key_state,
                         ..
                     },
                 ..
-            } => match (code, state.is_pressed()) {
-                (keycode, true) => self.keys_down.insert(keycode).consume(),
+            } => match (code, key_state.is_pressed()) {
+                (keycode, true) => {
+                    self.keys_down.insert(keycode).consume();
+                    if keycode == KeyCode::F11 {
+                        state
+                            .window
+                            .set_fullscreen(match state.window.fullscreen() {
+                                Some(_) => None,
+                                None => Some(winit::window::Fullscreen::Borderless(None)),
+                            });
+                    }
+                }
                 (keycode, false) => self.keys_down.remove(&keycode).consume(),
             },
             _ => {}

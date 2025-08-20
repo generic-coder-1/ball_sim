@@ -287,9 +287,9 @@ impl RenderState {
                 timestamp_writes: None,
             });
 
-            self.chunk_rendering_data
-                .render(&mut render_pass, &self.camera_bind_group);
             self.ball_rendering_data
+                .render(&mut render_pass, &self.camera_bind_group);
+            self.chunk_rendering_data
                 .render(&mut render_pass, &self.camera_bind_group);
 
             render_pass.forget_lifetime();

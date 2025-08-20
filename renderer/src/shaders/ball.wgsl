@@ -57,6 +57,9 @@ fn fs_main(
   if on != 1{
     current_pixel.x += BALL_SIZE; 
   }
-  //return textureLoad(ball_tex, current_pixel, 0);
-  return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+  let color = textureLoad(ball_tex, current_pixel, 0);
+  if color.w<0.999{
+    discard;
+  }
+  return color;
 }

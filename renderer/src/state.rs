@@ -15,7 +15,7 @@ pub use wgpu::SurfaceError;
 use wgpu::{util::DeviceExt, BindGroupLayoutEntry, ShaderStages};
 
 use crate::{
-    ball::{BallPosition, BallRenderingData},
+    ball::{BallPosition, BallRenderingData, Direction},
     chunk::{AtlasInfo, Chunk, ChunkPosition, ChunkRenderingData},
     texture::Texture,
 };
@@ -169,6 +169,13 @@ impl RenderState {
             "ball_texture",
         )?;
 
+        let dir_texture = Texture::from_bytes(
+            &device,
+            &queue,
+            include_bytes!("./textures/directions.png"),
+            "dir_texture",
+        )?;
+
         let chunk_rendering_data = ChunkRenderingData::new(
             &device,
             &queue,
@@ -187,6 +194,7 @@ impl RenderState {
             &queue,
             &camera_bind_group_layout,
             ball_texture,
+            dir_texture,
             &config,
         );
 
@@ -226,7 +234,7 @@ impl RenderState {
             .update_chunks(&self.queue, pos, chunks);
     }
 
-    pub fn update_balls(&mut self, pos: Vec<BallPosition>, balls: Vec<bool>) {
+    pub fn update_balls(&mut self, pos: Vec<BallPosition>, balls: Vec<(bool, Direction)>) {
         self.ball_rendering_data
             .update_balls(&self.queue, pos, balls);
     }

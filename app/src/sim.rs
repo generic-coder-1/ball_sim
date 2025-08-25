@@ -5,7 +5,7 @@ use std::{
 };
 
 use renderer::{
-    ball::BallPosition,
+    ball::{BallPosition, Direction},
     chunk::{Chunk, ChunkPosition, CHUNK_SIZE},
 };
 use shared::{
@@ -26,7 +26,7 @@ pub enum Tool {
 
 pub struct Simulation {
     chunks: HashMap<ChunkPosition, Chunk>,
-    balls: HashMap<BallPosition, bool>,
+    balls: HashMap<BallPosition, (bool, Direction)>,
     current_tool: Tool,
     last_mouse_pos: [f32; 2],
 }
@@ -42,7 +42,7 @@ impl Simulation {
         s.chunks.insert(
             ChunkPosition { position: [0; 2] },
             Chunk {
-                data: from_fn(|_| Into::<u8>::into(Tile::Down)),
+                data: from_fn(|_| Into::<u8>::into(Tile::Empty)),
             },
         );
         s
@@ -95,7 +95,7 @@ impl Simulation {
         out
     }
 
-    fn get_visible_balls(&self, app: &App) -> Vec<(BallPosition, bool)> {
+    fn get_visible_balls(&self, app: &App) -> Vec<(BallPosition, (bool, Direction))> {
         let view_size = app.camera().world_viewport_size();
         let center = app.camera().pos;
         let ranges: Vec<RangeInclusive<i32>> = center
@@ -127,7 +127,7 @@ impl Simulation {
                 ],
             })
             .or_insert(Chunk {
-                data: from_fn(|_| u8::from(Tile::Down)),
+                data: from_fn(|_| u8::from(Tile::Empty)),
             })
             .set_tile(
                 [
@@ -155,14 +155,14 @@ impl Simulation {
                     .try_into()
                     .ok()
             })
-            .unwrap_or(Tile::Down)
+            .unwrap_or(Tile::Empty)
     }
 
-    fn set_ball(&mut self, pos: [i32; 2], on: bool) {
+    fn set_ball(&mut self, pos: [i32; 2], on: (bool, Direction)) {
         self.balls.insert(BallPosition { position: pos }, on);
     }
 
-    fn get_ball(&self, pos: [i32; 2]) -> Option<bool> {
+    fn get_ball(&self, pos: [i32; 2]) -> Option<(bool, Direction)> {
         self.balls.get(&BallPosition { position: pos }).copied()
     }
 
@@ -174,7 +174,7 @@ impl Simulation {
                 let pos = app.get_mouse_position_world();
                 let w_pos = [pos[0].floor() as i32, pos[1].floor() as i32];
                 match self.current_tool {
-                    Tool::BallTool(on) => self.set_ball(w_pos, on),
+                    Tool::BallTool(on) => self.set_ball(w_pos, (on, Direction::Right)),
                     Tool::TileTool(tile) => self.set_tile(w_pos, tile),
                 }
             }
@@ -189,31 +189,75 @@ impl Simulation {
     ) {
         let mut balls_to_update = vec![];
         let mut balls_to_remove = vec![];
-        let mut balls_to_duplicate = vec![];
-        self.balls.iter().for_each(|(pos, on)| {
-            let tile = self.get_tile(pos.position);
-            if !dont_move.contains(&pos.position)
-                && match (tile, dir) {
-                    (Tile::Up, Direction::Up)
-                    | (Tile::Down, Direction::Down)
-                    | (Tile::Left, Direction::Left)
-                    | (Tile::Right, Direction::Right) => true,
-                    (Tile::Filter, Direction::Left) if !on => true,
-                    (Tile::Filter, Direction::Right) if *on => true,
-                    (Tile::Duplicate, Direction::Left) | (Tile::Duplicate, Direction::Right) => {
-                        if !duplicated.contains(&pos.position) {
-                            balls_to_duplicate.push((*pos, *on));
-                        }
-                        true
-                    }
-                    (Tile::Destroy, _) => {
+        let mut balls_to_duplicate = HashSet::new();
+        self.balls.iter_mut().for_each(|(pos, on)| {
+            if !dont_move.contains(&pos.position) {
+                let tile = self.chunks.get_tile(pos.position);
+                on.1 = match tile {
+                    Tile::Up => Direction::Up,
+                    Tile::Down => Direction::Down,
+                    Tile::Left => Direction::Left,
+                    Tile::Right => Direction::Right,
+                    Tile::Destroy => {
                         balls_to_remove.push(*pos);
-                        false
+                        return;
                     }
-                    _ => false,
+                    Tile::Hold => {
+                        return;
+                    }
+                    Tile::FilterR => {
+                        if on.0 {
+                            Direction::Left
+                        } else {
+                            Direction::Right
+                        }
+                    }
+                    Tile::FilterL => {
+                        if !on.0 {
+                            Direction::Left
+                        } else {
+                            Direction::Right
+                        }
+                    }
+                    Tile::FilterU => {
+                        if on.0 {
+                            Direction::Down
+                        } else {
+                            Direction::Up
+                        }
+                    }
+                    Tile::FilterD => {
+                        if !on.0 {
+                            Direction::Down
+                        } else {
+                            Direction::Up
+                        }
+                    }
+                    Tile::DuplicateH => {
+                        if matches!(dir, Direction::Right | Direction::Left) {
+                            if !duplicated.contains(&pos.position) {
+                                balls_to_duplicate.insert(*pos);
+                            }
+                            dir
+                        } else {
+                            return;
+                        }
+                    }
+                    Tile::DuplicateV => {
+                        if matches!(dir, Direction::Up | Direction::Down) {
+                            if !duplicated.contains(&pos.position) {
+                                balls_to_duplicate.insert(*pos);
+                            }
+                            dir
+                        } else {
+                            return;
+                        }
+                    }
+                    _ => on.1,
+                };
+                if on.1 == dir {
+                    balls_to_update.push(pos.position);
                 }
-            {
-                balls_to_update.push(pos.position);
             }
         });
         balls_to_remove.into_iter().for_each(|pos| {
@@ -227,7 +271,6 @@ impl Simulation {
         });
         let mut failed_holds = HashSet::new();
         while let Some(pos) = balls_to_update.pop() {
-            println!("updating {pos:?}");
             let next_pos = BallPosition {
                 position: match dir {
                     Direction::Up => [pos[0], pos[1] + 1],
@@ -244,30 +287,23 @@ impl Simulation {
                         .expect("we are trying to move a ball that doesn't exist");
                     self.balls.insert(next_pos, ball);
                     dont_move.insert(next_pos.position);
-                    if self.get_tile(pos) == Tile::Duplicate {
+                    if matches!(self.get_tile(pos), Tile::DuplicateH | Tile::DuplicateV) {
                         duplicated.insert(pos);
+                        if balls_to_duplicate.contains(&BallPosition { position: pos }) {
+                            self.balls.insert(BallPosition { position: pos }, ball);
+                        }
                     }
                 }
-            } else if self.get_tile(next_pos.position) == Tile::Hold && !failed_holds.contains(&next_pos.position){
+            } else if self.get_tile(next_pos.position) == Tile::Hold
+                && !failed_holds.contains(&next_pos.position)
+            {
                 balls_to_update.push(pos);
                 balls_to_update.push(next_pos.position);
-            } else if self.get_tile(pos) == Tile::Hold{
+            } else if self.get_tile(pos) == Tile::Hold {
                 failed_holds.insert(pos);
             }
         }
-
-        balls_to_duplicate.into_iter().for_each(|(pos, on)| {
-            self.balls.insert(pos, on);
-        });
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
 }
 
 impl State for Simulation {
@@ -290,7 +326,7 @@ impl State for Simulation {
                     format!("{on:?}"),
                 );
             });
-            (0_u8..9_u8)
+            (0_u8..14_u8)
                 .filter_map(|val| Some(Tool::TileTool(val.try_into().ok()?)))
                 .for_each(|tile| {
                     ui.selectable_value(&mut self.current_tool, tile.clone(), format!("{tile:?}"));
@@ -298,18 +334,46 @@ impl State for Simulation {
         });
         egui::Window::new("simulate").show(ctx, |ui| {
             if ui.button("full update").clicked() {
-                dbg!([
+                [
                     Direction::Up,
                     Direction::Right,
                     Direction::Left,
                     Direction::Down,
                 ]
                 .into_iter()
-                .fold((HashSet::new(), HashSet::new()), |(mut moved, mut dup), dir| {
-                    self.sim_step(dir, &mut moved, &mut dup);
-                    (moved, dup) 
-                }));
+                .fold(
+                    (HashSet::new(), HashSet::new()),
+                    |(mut moved, mut dup), dir| {
+                        self.sim_step(dir, &mut moved, &mut dup);
+                        (moved, dup)
+                    },
+                );
             }
         });
+    }
+}
+
+trait GetTile {
+    fn get_tile(&self, pos: [i32; 2]) -> Tile;
+}
+
+impl GetTile for HashMap<ChunkPosition, Chunk> {
+    fn get_tile(&self, pos: [i32; 2]) -> Tile {
+        self.get(&ChunkPosition {
+            position: [
+                pos[0].div_euclid(CHUNK_SIZE as i32),
+                pos[1].div_euclid(CHUNK_SIZE as i32),
+            ],
+        })
+        .and_then(|chunk| {
+            chunk
+                .get_tile([
+                    pos[0].rem_euclid(CHUNK_SIZE as i32) as u32,
+                    pos[1].rem_euclid(CHUNK_SIZE as i32) as u32,
+                ])
+                .try_into()
+                .ok()
+        })
+        .unwrap_or(Tile::Empty)
     }
 }

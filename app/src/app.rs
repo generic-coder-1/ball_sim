@@ -6,7 +6,7 @@ use std::{
 };
 
 use renderer::{
-    ball::BallPosition,
+    ball::{BallPosition, Direction},
     chunk::{Chunk, ChunkPosition},
     state::{CameraUniform, RenderState, SurfaceError},
 };
@@ -155,7 +155,7 @@ impl App {
         }
     }
 
-    pub fn set_balls_to_draw(&mut self, balls: Vec<(BallPosition, bool)>) {
+    pub fn set_balls_to_draw(&mut self, balls: Vec<(BallPosition, (bool, Direction))>) {
         if let Some(ref mut render_state) = &mut self.render_state {
             let (pos, data) = balls.into_iter().unzip();
             render_state.update_balls(pos, data);
@@ -178,20 +178,6 @@ impl ApplicationHandler<RenderState> for App {
                 data: from_fn(|_| Into::<u8>::into(Tile::Down)),
             }],
         );
-        self.set_balls_to_draw(
-            (0..100)
-                .flat_map(|i| (0..100).map(move |j| (i, j)))
-                .map(|i| {
-                    (
-                        BallPosition {
-                            position: [i.0, i.1],
-                        },
-                        true,
-                    )
-                })
-                .collect(),
-        );
-
         //updating camera
         let size = self.render_state.as_ref().unwrap().window.inner_size();
         self.camera.screensize = [size.width as f32, size.height as f32];

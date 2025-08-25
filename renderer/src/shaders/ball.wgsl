@@ -45,6 +45,7 @@ struct BallInstance{
 @group(0) @binding(1) var<storage, read> ballOnInstance: array<u32>;
 
 @group(1) @binding(0) var ball_tex: texture_2d<f32>;
+@group(1) @binding(1) var arrow_tex: texture_2d<f32>;
 
 @group(2) @binding(0) var<uniform> camera: Camera;
 
@@ -54,12 +55,19 @@ fn fs_main(
   @location(1) on: u32,
 ) -> @location(0) vec4<f32> {
   var current_pixel = vec2<u32>(uv * f32(BALL_SIZE));
-  if on != 1{
+  var current_pixel_arrow = current_pixel;
+  if on%2 != 1{
     current_pixel.x += BALL_SIZE; 
   }
-  let color = textureLoad(ball_tex, current_pixel, 0);
+  current_pixel_arrow.x += BALL_SIZE * (on>>1);
+  var color = textureLoad(arrow_tex, current_pixel_arrow, 0);
+  
+  if color.w<0.999{
+    color = textureLoad(ball_tex, current_pixel, 0);
+  }
   if color.w<0.999{
     discard;
   }
+
   return color;
 }

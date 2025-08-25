@@ -6,9 +6,14 @@ pub enum Tile {
     Right,
     Hold,
     Block,
-    Duplicate,
-    Filter,
+    DuplicateH,
+    FilterR,
     Destroy,
+    Empty,
+    FilterU,
+    FilterD,
+    FilterL,
+    DuplicateV,
 }
 
 impl From<Tile> for u8 {
@@ -20,9 +25,14 @@ impl From<Tile> for u8 {
             Tile::Right => 3,
             Tile::Hold => 4,
             Tile::Block => 5,
-            Tile::Duplicate => 6,
-            Tile::Filter => 7,
+            Tile::DuplicateH => 6,
+            Tile::FilterR => 7,
             Tile::Destroy => 8,
+            Tile::Empty => 9,
+            Tile::FilterU => 10,
+            Tile::FilterD => 11,
+            Tile::FilterL => 12,
+            Tile::DuplicateV => 13,
         }
     }
 }
@@ -38,9 +48,14 @@ impl TryFrom<u8> for Tile {
             3 => Self::Right,
             4 => Self::Hold,
             5 => Self::Block,
-            6 => Self::Duplicate,
-            7 => Self::Filter,
+            6 => Self::DuplicateH,
+            7 => Self::FilterR,
             8 => Self::Destroy,
+            9 => Self::Empty,
+            10 => Self::FilterU,
+            11 => Self::FilterD,
+            12 => Self::FilterL,
+            13 => Self::DuplicateV,
             _ => Err(())?,
         })
     }

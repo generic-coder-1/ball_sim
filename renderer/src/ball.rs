@@ -1,8 +1,10 @@
 use bytemuck::cast_slice;
 use egui_wgpu_backend::wgpu::{
-    self, util::DeviceExt, BindGroupEntry, BindGroupLayoutEntry, BindingType, BufferUsages,
-    PipelineCompilationOptions, PrimitiveState, RenderPass, ShaderStages, SurfaceConfiguration,
+    self, util::DeviceExt, BindGroupEntry, BindGroupLayoutEntry,
+    BindingType, BufferUsages, PipelineCompilationOptions, PrimitiveState, RenderPass,
+    ShaderStages, SurfaceConfiguration,
 };
+use shared::egui::Direction as EguiDirection;
 
 use crate::{texture::Texture, vertex::Vertex};
 
@@ -30,10 +32,32 @@ pub struct BallsOn {
     data: Vec<u32>,
 }
 
-impl From<Vec<bool>> for BallsOn {
-    fn from(value: Vec<bool>) -> Self {
+impl From<Vec<(bool, Direction)>> for BallsOn {
+    fn from(value: Vec<(bool, Direction)>) -> Self {
         Self {
-            data: value.iter().map(|on| if *on { 1 } else { 0 }).collect(),
+            data: value
+                .iter()
+                .map(|(on, dir)| (if *on { 1 } else { 0 }) | u32::from(*dir) << 1)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl From<Direction> for u32 {
+    fn from(value: Direction) -> Self {
+        match value {
+            Direction::Right => 0,
+            Direction::Up => 1,
+            Direction::Down => 2,
+            Direction::Left => 3,
         }
     }
 }
@@ -46,10 +70,11 @@ impl BallRenderingData {
         queue: &wgpu::Queue,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
         ball_texture: Texture,
+        dir_texture: Texture,
         surface_config: &SurfaceConfiguration,
     ) -> Self {
         let positions_array = vec![BallPosition { position: [0; 2] }; MAX_BALLS as usize];
-        let data_array: BallsOn = vec![true; MAX_BALLS as usize].into();
+        let data_array: BallsOn = vec![(true, Direction::Right); MAX_BALLS as usize].into();
         let instance_array_size = 0;
         let instance_position_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -106,16 +131,28 @@ impl BallRenderingData {
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture_bind_group_layout"),
-                entries: &[BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                ],
             });
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("texture_bind_group"),
@@ -123,7 +160,11 @@ impl BallRenderingData {
             entries: &[BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(&ball_texture.view),
-            }],
+            },BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&dir_texture.view),
+            }
+            ],
         });
 
         let ball_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -213,7 +254,7 @@ impl BallRenderingData {
         }
     }
 
-    pub fn update_balls(&mut self, queue: &wgpu::Queue, pos: Vec<BallPosition>, data: Vec<bool>) {
+    pub fn update_balls(&mut self, queue: &wgpu::Queue, pos: Vec<BallPosition>, data: Vec<(bool, Direction)>) {
         if pos.len() != data.len() {
             panic!("sizes of data is incorrect");
         }
@@ -231,7 +272,7 @@ impl BallRenderingData {
             0,
             bytemuck::cast_slice(
                 data.iter()
-                    .map(|on| if *on { 1 } else { 0 })
+                    .map(|(on, dir)| if *on { 1 } else { 0 } | u32::from(*dir)<<1)
                     .collect::<Vec<u32>>()
                     .as_slice(),
             ),
